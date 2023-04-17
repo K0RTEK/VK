@@ -1,6 +1,6 @@
 import vk_api
 from datetime import datetime
-from DataBase import getusersid
+from database import getusersid
 
 session = vk_api.VkApi(
     token="vk1.a.Cyq9AScrJvxUTFoq3CDc7_bqYO9l1N89ZDT7owEwWyvrqTIVtaqxxaMtX-Dt5A0kpkaV-mBH9AzaAxw4YbgBdsPk0qoW4nann1IYiz\
@@ -53,14 +53,14 @@ def usersubscriptions():
 
 # получает 10 постов группы, я подумал, что 100 слишком дохуя
 def getpoststext():
-    posts = session.method("wall.get", {"owner_id": -getid()})['items']
+    posts = session.method("wall.get", {"owner_id": -getid()})
     # print(posts)
-    for post in range(10):
-        print(posts[post]['text'])
+
+    return [post['text'] for post in posts['items']]
 
 
 # тут надо сделать функцию определения темы по тексту, иначе будет слишком много дрочи
 # потом присвоим тему к group_id в таблице posts_by_group и там будем кластеризовать пользователей
 # с лайками пока хз, еще не разобрался
 if __name__ == '__main__':
-    getpoststext()
+    print(getpoststext())
