@@ -66,12 +66,12 @@ def get_group_posts(group_id):
     response = vk.wall.get(owner_id='-' + str(group_id), count=100, extended=1)
     posts = response['items']
     # Если постов больше 100, получаем оставшиеся
-    try:
-        while len(posts) < 100:
-            response = vk.wall.get(owner_id='-' + str(group_id), count=100, extended=1, offset=len(posts))
-            posts.extend(response['items'])
-    except:
-        pass
+    # try:
+    #     while len(posts) < 300:
+    #         response = vk.wall.get(owner_id='-' + str(group_id), count=100, extended=1, offset=len(posts))
+    #         posts.extend(response['items'])
+    # except:
+    #     pass
 
     # Извлекаем только тексты постов и удаляем все символы кроме букв и цифр
     post_texts = [re.sub(r'[^a-zA-Zа-яА-ЯёЁ0-9]', ' ', post['text']) for post in posts]
@@ -95,9 +95,15 @@ def save_data():
             curr_data = {'text': i, 'tag': data['тематика'][idx]}
             df.loc[len(df)] = curr_data
         idx += 1
-    df['text'] = list(map(remove_extra_spaces, df['text']))
-    df = df.dropna(subset=['text'])
+    # df['text'] = list(map(remove_extra_spaces, df['text']))
+    # df = df.dropna(subset=['text'])
     df.to_csv('train_data.csv', index=False, lineterminator='', header=False)
+
+
+def create_train_file():
+    df = pd.DataFrame(columns=['text', 'tag'])
+    # Сохранение DataFrame в CSV-файл
+    df.to_csv('train_data.csv', index=False)
 
 
 # тут надо сделать функцию определения темы по тексту, иначе будет слишком много дрочи
@@ -105,7 +111,4 @@ def save_data():
 # с лайками пока хз, еще не разобрался
 if __name__ == '__main__':
     save_data()
-    # df = pd.DataFrame(columns=['text', 'tag'])
-    #
-    # # Сохранение DataFrame в CSV-файл
-    # df.to_csv('train_data.csv', index=False)
+    # create_train_file()
