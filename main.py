@@ -2,15 +2,22 @@ import vk_api
 from datetime import datetime
 import re
 import pandas as pd
+import io
 
 session = vk_api.VkApi(
     token="vk1.a.Cyq9AScrJvxUTFoq3CDc7_bqYO9l1N89ZDT7owEwWyvrqTIVtaqxxaMtX-Dt5A0kpkaV-mBH9AzaAxw4YbgBdsPk0qoW4nann1IYiz\
     IoXelK2F2cjMgadmmxz0iiTcz1oNvNWUpYubIm64vgH-JWdlp-CSiGBeukBg_WQOMUDv9bi6HNj5eZyw_zP5aNwYILpTOdWG47KnbSpMcuqQf1Bg")
+
+# второй vk api ключ, если первый опять забанят
+# vk1.a.Q4fwlHwY_-8ounQR9EoxyhNlODFYU3lzAFzeuXHLNxctJvWWB5__lXryu0rGA12Kkae1P0eqdr0W_qJ-PBxSCmuzW7sq3GNaNExq0Hj28rkObt9bwhONN4kQHAV9tlIc1uYqJS3i0bb_zeo1vE_-VsVvZM7b_g1VzoVXGAufTdZvgfvl8o_5yr4mppJ99k9hFInFP3g0lY8OpyZ4nhOg5Q
+
 # тут надо написать input(), я заебался каждый раз вставлять ссылку
-group_id = "https://vk.com/baneksbest"
+group_id = "https://vk.com/rut.digital"
 vk = session.get_api()
 
 
+# функция декоратор, было интересно сколько будет отрабатывать сбор подписок у подписчиков группы
+# по сути она не нужна
 def lead_time(func):
     def wrapper():
         print("Функция начала работу")
@@ -22,9 +29,9 @@ def lead_time(func):
 
 
 # получает Id по короткой ссылке вида public123123123
-def getpublicid():
+def getpublicid(group_url):
     return "public" + str(
-        session.method("utils.resolveScreenName", {"screen_name": group_id[group_id.rfind("/") + 1::]})[
+        session.method("utils.resolveScreenName", {"screen_name": group_url[group_url.rfind("/") + 1::]})[
             'object_id'])
 
 
@@ -36,79 +43,116 @@ def getid(group_url):
 
 # получает Id пользователей группы
 def getgroupmembersid():
-    return session.method("groups.getMembers", {"group_id": getpublicid()})['items']
+    return session.method("groups.getMembers", {"group_id": getpublicid(group_id)})['items'][:5]
 
 
 # получает id групп на которые подписан пользователь
-# @lead_time
 def usersubscriptions():
-    data_array = []
+    data_array = {}
     for user_id in getgroupmembersid():
+        groups_id = {}
         try:
             groups = session.method("users.getSubscriptions", {"user_id": user_id})['groups']['items']
-            for i in range(len(groups)):
-                data_array.append((user_id, groups[i]))
+            for group in groups:
+                groups_id[group] = []
+                data_array[user_id] = groups_id
         except Exception:
             pass
     return data_array
 
 
-# получает 10 постов группы, я подумал, что 100 слишком дохуя
-def getpoststext():
-    posts = session.method("wall.get", {"owner_id": -getid()})
-    # print(posts)
-
-    return [post['text'] for post in posts['items']]
-
-
-def get_group_posts(group_id):
-    # Получаем все посты с группы
-    response = vk.wall.get(owner_id='-' + str(group_id), count=100, extended=1)
-    posts = response['items']
-    # Если постов больше 100, получаем оставшиеся
-    # try:
-    #     while len(posts) < 300:
-    #         response = vk.wall.get(owner_id='-' + str(group_id), count=100, extended=1, offset=len(posts))
-    #         posts.extend(response['items'])
-    # except:
-    #     pass
-
-    # Извлекаем только тексты постов и удаляем все символы кроме букв и цифр
-    post_texts = [re.sub(r'[^a-zA-Zа-яА-ЯёЁ0-9]', ' ', post['text']) for post in posts]
-
-    return post_texts
+def get_users_subscriptions_posts():
+    data = usersubscriptions()
+    for u_id, item in data.items():
+        for g_id, arr in dict(item).items():
+            data[u_id][g_id] = get_group_posts(g_id, 10)
+            if data[u_id][g_id] is None:
+                del data[u_id][g_id]
+    return data
 
 
+# удаление ссылок из текста
+def remove_ids_links(text):
+    # Удалить все вхождения "id12345" или "club12345" в тексте
+    text = re.sub(r"(id|club)\d+", "", text)
+
+    # Удалить все ссылки из текста
+    pattern = r'https?://\S+|www\.\S+|\S+@\S+'
+    text = re.sub(pattern, '', text)
+
+    return text
+
+
+# получение постов с группы с условиями
+def get_group_posts(id_group, amount):
+    # Получаем 100 постов с группы(больше 100 не работает, даже после попыток обхода)
+    try:
+        response = vk.wall.get(owner_id='-' + str(id_group), count=amount, extended=1)
+        posts = response['items']
+        if response['count'] != 0:
+            # выбор только не рекламных постов
+            post_texts = [post['text'] for post in posts if not post.get('marked_as_ads')]
+            # удаление ссылок из текстов
+            post_texts = [remove_ids_links(post) for post in post_texts if post != '']
+            # удаление всех символов кроме букв и цифр
+            post_texts = [re.sub(r'[^a-zA-Zа-яА-ЯёЁ0-9]', ' ', post) for post in post_texts]
+            post_texts = list(map(remove_extra_spaces, post_texts))
+            return post_texts
+    except:
+        pass
+
+
+# удаление лишних пробелов между словами. При удалении всех ненужных символов из текста, на их метсах остаются пробелы.
 def remove_extra_spaces(s):
     # Заменяем множественные пробелы одним пробелом
     s = " ".join(s.split())
     return s
 
 
+# получение постов со всех групп из xlsx файла и присваивание им тегов.
+# Сохранение данных в csv файл для обучения модели.
 def save_data():
-    df = pd.read_csv('train_data.csv', index_col=None)
-    data = pd.read_excel('book_1.xlsx')
+    df = pd.read_csv('train_data.csv')
+    data = pd.read_excel('Книга 1.xlsx')
+    # vk_api ругается если слишком часто получать id группы через ссылку
+    # но отдельным генератором urls получить id групп можно(дебилизм)
     urls = [getid(url) for url in data['ссылка']]
     idx = 0
     for url in urls:
-        for i in get_group_posts(url):
+        for i in get_group_posts(url, 100):
             curr_data = {'text': i, 'tag': data['тематика'][idx]}
             df.loc[len(df)] = curr_data
         idx += 1
-    # df['text'] = list(map(remove_extra_spaces, df['text']))
-    # df = df.dropna(subset=['text'])
-    df.to_csv('train_data.csv', index=False, lineterminator='', header=False)
+    df['text'] = list(map(remove_extra_spaces, df['text']))
+    df.to_csv('train_data.csv', index=False, lineterminator='', header=True)
+    clean_data_test()
 
 
+# не понятно почему удаление пропусков в датафрейме не работает в функции save_data(), но работает отдельно
+# в этой функции, поэтому ее не трогать
+def clean_data_test():
+    df = pd.read_csv('train_data.csv')
+    df = df.dropna()
+    df.to_csv('train_data.csv', index=False, lineterminator='', header=True)
+
+
+# функция сделана для пробных прогонов создания тренировочного файла с данными, потом ее надо будет удалить
 def create_train_file():
     df = pd.DataFrame(columns=['text', 'tag'])
     # Сохранение DataFrame в CSV-файл
     df.to_csv('train_data.csv', index=False)
 
 
-# тут надо сделать функцию определения темы по тексту, иначе будет слишком много дрочи
-# потом присвоим тему к group_id в таблице posts_by_group и там будем кластеризовать пользователей
-# с лайками пока хз, еще не разобрался
-if __name__ == '__main__':
-    save_data()
+def main():
+    # clean_data_test()
     # create_train_file()
+    save_data()
+    # print(get_users_subscriptions_posts())
+    # usersubscriptions()
+
+
+# уже не надо делать функцию по определению тега текста, план изменился
+# потом присвоим тему к group_id в таблице posts_by_group и там будем кластеризовать пользователей
+# про лайки забыли, ничего с ними не получится
+if __name__ == '__main__':
+    main()
