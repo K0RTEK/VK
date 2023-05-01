@@ -43,7 +43,7 @@ def getid(group_url):
 
 # получает Id пользователей группы
 def getgroupmembersid():
-    return session.method("groups.getMembers", {"group_id": getpublicid(group_id)})['items'][:5]
+    return session.method("groups.getMembers", {"group_id": getpublicid(group_id)})['items'][:10]
 
 
 # получает id групп на которые подписан пользователь
@@ -65,11 +65,24 @@ def get_users_subscriptions_posts():
     data = usersubscriptions()
     for u_id, item in data.items():
         for g_id, arr in dict(item).items():
-            data[u_id][g_id] = get_group_posts(g_id, 10)
+            data[u_id][g_id] = get_group_posts(g_id, 20)
             if data[u_id][g_id] is None:
                 del data[u_id][g_id]
     return data
 
+def find_most_frequent_word(words):
+    word_counts = {}
+    for word in words:
+        if word.isalpha():
+            if word not in word_counts:
+                word_counts[word] = 1
+            else:
+                word_counts[word] += 1
+    try:
+        most_frequent_word = max(word_counts, key=word_counts.get)
+    except:
+        return None
+    return most_frequent_word
 
 # удаление ссылок из текста
 def remove_ids_links(text):
