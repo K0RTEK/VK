@@ -1,8 +1,8 @@
 import vk_api
-from datetime import datetime
 import re
 import pandas as pd
-import io
+import joblib
+from datetime import datetime
 
 session = vk_api.VkApi(
     token="vk1.a.Cyq9AScrJvxUTFoq3CDc7_bqYO9l1N89ZDT7owEwWyvrqTIVtaqxxaMtX-Dt5A0kpkaV-mBH9AzaAxw4YbgBdsPk0qoW4nann1IYiz\
@@ -14,18 +14,7 @@ session = vk_api.VkApi(
 # тут надо написать input(), я заебался каждый раз вставлять ссылку
 group_id = "https://vk.com/rut.digital"
 vk = session.get_api()
-
-
-# функция декоратор, было интересно сколько будет отрабатывать сбор подписок у подписчиков группы
-# по сути она не нужна
-def lead_time(func):
-    def wrapper():
-        print("Функция начала работу")
-        start = datetime.now()
-        func()
-        print("Функция закончила работу со временем: ", datetime.now() - start)
-
-    return wrapper
+model = joblib.load('text_model.pkl')
 
 
 # получает Id по короткой ссылке вида public123123123
@@ -43,7 +32,10 @@ def getid(group_url):
 
 # получает Id пользователей группы
 def getgroupmembersid():
-    return session.method("groups.getMembers", {"group_id": getpublicid(group_id)})['items'][:10]
+    not_closed_ids = [user_id for user_id in
+                      session.method("groups.getMembers", {"group_id": getpublicid(group_id)})['items'][:5] if
+                      vk.users.get(user_id=user_id, fields='is_closed')[0]['is_closed'] is False]
+    return not_closed_ids
 
 
 # получает id групп на которые подписан пользователь
@@ -51,24 +43,32 @@ def usersubscriptions():
     data_array = {}
     for user_id in getgroupmembersid():
         groups_id = {}
-        try:
-            groups = session.method("users.getSubscriptions", {"user_id": user_id})['groups']['items']
-            for group in groups:
-                groups_id[group] = []
+        groups = [g_id for g_id in session.method("users.getSubscriptions", {"user_id": user_id})['groups']['items'] if
+                  vk.groups.getById(group_id=g_id, fields='is_closed')[0]['is_closed'] == 0]
+        for group in groups:
+            topics = get_group_posts(group, 5)
+            if topics is not None:
+                groups_id[group] = topics
                 data_array[user_id] = groups_id
-        except Exception:
-            pass
+
     return data_array
 
 
-def get_users_subscriptions_posts():
-    data = usersubscriptions()
-    for u_id, item in data.items():
-        for g_id, arr in dict(item).items():
-            data[u_id][g_id] = get_group_posts(g_id, 20)
-            if data[u_id][g_id] is None:
-                del data[u_id][g_id]
-    return data
+def clean_text(text):
+    # Удалить все вхождения "id12345" или "club12345" в тексте
+    text = re.sub(r"(id|club)\d+", "", text)
+
+    # Удалить все ссылки из текста
+    pattern = r'https?://\S+|www\.\S+|\S+@\S+'
+
+    text = re.sub(pattern, '', text)
+
+    text = re.sub(r'[^a-zA-Zа-яА-ЯёЁ0-9]', ' ', text)
+
+    text = " ".join(text.split())
+
+    return text
+
 
 def find_most_frequent_word(words):
     word_counts = {}
@@ -84,42 +84,41 @@ def find_most_frequent_word(words):
         return None
     return most_frequent_word
 
-# удаление ссылок из текста
-def remove_ids_links(text):
-    # Удалить все вхождения "id12345" или "club12345" в тексте
-    text = re.sub(r"(id|club)\d+", "", text)
-
-    # Удалить все ссылки из текста
-    pattern = r'https?://\S+|www\.\S+|\S+@\S+'
-    text = re.sub(pattern, '', text)
-
-    return text
-
 
 # получение постов с группы с условиями
 def get_group_posts(id_group, amount):
     # Получаем 100 постов с группы(больше 100 не работает, даже после попыток обхода)
     try:
+
         response = vk.wall.get(owner_id='-' + str(id_group), count=amount, extended=1)
         posts = response['items']
         if response['count'] != 0:
             # выбор только не рекламных постов
             post_texts = [post['text'] for post in posts if not post.get('marked_as_ads')]
-            # удаление ссылок из текстов
-            post_texts = [remove_ids_links(post) for post in post_texts if post != '']
-            # удаление всех символов кроме букв и цифр
-            post_texts = [re.sub(r'[^a-zA-Zа-яА-ЯёЁ0-9]', ' ', post) for post in post_texts]
-            post_texts = list(map(remove_extra_spaces, post_texts))
+            post_texts = [clean_text(post) for post in post_texts if clean_text(post) != '']
+            post_texts = [model.predict([text])[0] for text in post_texts]
+            post_texts = find_most_frequent_word(post_texts)
             return post_texts
     except:
         pass
 
 
-# удаление лишних пробелов между словами. При удалении всех ненужных символов из текста, на их метсах остаются пробелы.
-def remove_extra_spaces(s):
-    # Заменяем множественные пробелы одним пробелом
-    s = " ".join(s.split())
-    return s
+def get_user_posts(id_group):
+    # Получаем 100 постов с группы(больше 100 не работает, даже после попыток обхода)
+    try:
+        response = vk.wall.get(owner_id=id_group, count=10, extended=1)
+        posts = response['items']
+        if response['count'] != 0:
+            # выбор только не рекламных постов
+            dates = [datetime.fromtimestamp(post['date']).strftime('%Y-%m-%d %H:%M:%S') for post in posts]
+            post_texts = [post['text'] for post in posts if not post.get('marked_as_ads')]
+            post_texts = [clean_text(post) for post in post_texts if clean_text(post) != '']
+            post_texts = [model.predict([text])[0] for text in post_texts]
+            post_texts = [find_most_frequent_word(post_texts) for i in range(len(post_texts))]
+            result = {key: value for key, value in zip(dates, post_texts)}
+            return result
+    except:
+        pass
 
 
 # получение постов со всех групп из xlsx файла и присваивание им тегов.
@@ -136,7 +135,7 @@ def save_data():
             curr_data = {'text': i, 'tag': data['тематика'][idx]}
             df.loc[len(df)] = curr_data
         idx += 1
-    df['text'] = list(map(remove_extra_spaces, df['text']))
+    df['text'] = list(map(clean_text, df['text']))
     df.to_csv('train_data.csv', index=False, lineterminator='', header=True)
     clean_data_test()
 
@@ -157,15 +156,14 @@ def create_train_file():
 
 
 def main():
-    # clean_data_test()
-    # create_train_file()
-    save_data()
-    # print(get_users_subscriptions_posts())
-    # usersubscriptions()
+    # print(getgroupmembersid())
+    print(get_user_posts(193436147))
 
 
 # уже не надо делать функцию по определению тега текста, план изменился
 # потом присвоим тему к group_id в таблице posts_by_group и там будем кластеризовать пользователей
 # про лайки забыли, ничего с ними не получится
 if __name__ == '__main__':
+    # for i in getgroupmembersid():
+    #     print(get_user_posts(i))
     main()
