@@ -33,7 +33,7 @@ def getid(group_url):
 # получает Id пользователей группы
 def getgroupmembersid():
     not_closed_ids = [user_id for user_id in
-                      session.method("groups.getMembers", {"group_id": getpublicid(group_id)})['items'][:5] if
+                      session.method("groups.getMembers", {"group_id": getpublicid(group_id)})['items'][:10] if
                       vk.users.get(user_id=user_id, fields='is_closed')[0]['is_closed'] is False]
     return not_closed_ids
 
@@ -105,20 +105,20 @@ def get_group_posts(id_group, amount):
 
 def get_user_posts(id_group):
     # Получаем 100 постов с группы(больше 100 не работает, даже после попыток обхода)
-    try:
-        response = vk.wall.get(owner_id=id_group, count=10, extended=1)
-        posts = response['items']
-        if response['count'] != 0:
-            # выбор только не рекламных постов
-            dates = [datetime.fromtimestamp(post['date']).strftime('%Y-%m-%d %H:%M:%S') for post in posts]
-            post_texts = [post['text'] for post in posts if not post.get('marked_as_ads')]
-            post_texts = [clean_text(post) for post in post_texts if clean_text(post) != '']
-            post_texts = [model.predict([text])[0] for text in post_texts]
-            post_texts = [find_most_frequent_word(post_texts) for i in range(len(post_texts))]
-            result = {key: value for key, value in zip(dates, post_texts)}
-            return result
-    except:
-        pass
+
+    response = vk.wall.get(owner_id=id_group, count=10, extended=1)
+    posts = response['items']
+    if response['count'] != 0:
+        # выбор только не рекламных постов
+        dates = [datetime.fromtimestamp(post['date']).strftime('%Y-%m-%d %H:%M:%S') for post in posts]
+        post_texts = [post['text'] for post in posts if not post.get('marked_as_ads')]
+        post_texts = [clean_text(post) for post in post_texts if clean_text(post) != '']
+        post_texts = [model.predict([text])[0] for text in post_texts]
+        post_texts = [find_most_frequent_word(post_texts) for i in range(len(post_texts))]
+        result = {key: value for key, value in zip(dates, post_texts)}
+        return result
+    else:
+        return {'1970-01-01 00:00:00', 'Посты отсутствуют'}
 
 
 # получение постов со всех групп из xlsx файла и присваивание им тегов.
