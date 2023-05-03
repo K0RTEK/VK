@@ -15,7 +15,7 @@ def users_subscriptions():
     vk_group_id_topic = "INSERT INTO vk_group_id_topic (vk_group_id, topic_group) VALUES (%s, %s)"
     user_characteristic = "INSERT INTO user_vk_characteristic (user_id, user_posts_date,topic_user) VALUES (%s, %s, %s)"
     # Получаем данные из словаря
-    data = result_dict()
+    data = usersubscriptions()
     for user_id, group_data in data.items():
         for group_id, group_topic in group_data.items():
             # Задаем значения для user_vk_group

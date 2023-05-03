@@ -1,4 +1,4 @@
-create database VK;
+-- create database VK;
 create table user_vk_group
 (
     user_id     int, --id пользователя
