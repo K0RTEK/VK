@@ -3,10 +3,14 @@ import re
 import pandas as pd
 import joblib
 from datetime import datetime
+import psycopg2
+import numpy as np
+import asyncio
+import aiohttp
+from datetime import datetime
 
 session = vk_api.VkApi(
-    token="vk1.a.Cyq9AScrJvxUTFoq3CDc7_bqYO9l1N89ZDT7owEwWyvrqTIVtaqxxaMtX-Dt5A0kpkaV-mBH9AzaAxw4YbgBdsPk0qoW4nann1IYiz\
-    IoXelK2F2cjMgadmmxz0iiTcz1oNvNWUpYubIm64vgH-JWdlp-CSiGBeukBg_WQOMUDv9bi6HNj5eZyw_zP5aNwYILpTOdWG47KnbSpMcuqQf1Bg")
+    token="vk1.a.Q4fwlHwY_-8ounQR9EoxyhNlODFYU3lzAFzeuXHLNxctJvWWB5__lXryu0rGA12Kkae1P0eqdr0W_qJ-PBxSCmuzW7sq3GNaNExq0Hj28rkObt9bwhONN4kQHAV9tlIc1uYqJS3i0bb_zeo1vE_-VsVvZM7b_g1VzoVXGAufTdZvgfvl8o_5yr4mppJ99k9hFInFP3g0lY8OpyZ4nhOg5Q")
 
 # второй vk api ключ, если первый опять забанят
 # vk1.a.Q4fwlHwY_-8ounQR9EoxyhNlODFYU3lzAFzeuXHLNxctJvWWB5__lXryu0rGA12Kkae1P0eqdr0W_qJ-PBxSCmuzW7sq3GNaNExq0Hj28rkObt9bwhONN4kQHAV9tlIc1uYqJS3i0bb_zeo1vE_-VsVvZM7b_g1VzoVXGAufTdZvgfvl8o_5yr4mppJ99k9hFInFP3g0lY8OpyZ4nhOg5Q
@@ -15,6 +19,10 @@ session = vk_api.VkApi(
 group_id = "https://vk.com/rut.digital"
 vk = session.get_api()
 model = joblib.load('text_model.pkl')
+conn = psycopg2.connect(dbname='vk', user='postgres', password='9181287qQq', host='localhost')
+
+# Создаем курсор для выполнения запросов
+cur = conn.cursor()
 
 
 # получает Id по короткой ссылке вида public123123123
@@ -33,25 +41,93 @@ def getid(group_url):
 # получает Id пользователей группы
 def getgroupmembersid():
     not_closed_ids = [user_id for user_id in
-                      session.method("groups.getMembers", {"group_id": getpublicid(group_id)})['items'][:10] if
-                      vk.users.get(user_id=user_id, fields='is_closed')[0]['is_closed'] is False]
+                      session.method("groups.getMembers", {"group_id": getpublicid(group_id)})['items'] if
+                      vk.users.get(user_id=user_id, fields='is_closed')[0][
+                          'is_closed'] is False]
+
     return not_closed_ids
 
 
-# получает id групп на которые подписан пользователь
-def usersubscriptions():
-    data_array = {}
-    for user_id in getgroupmembersid():
-        groups_id = {}
-        groups = [g_id for g_id in session.method("users.getSubscriptions", {"user_id": user_id})['groups']['items'] if
-                  vk.groups.getById(group_id=g_id, fields='is_closed')[0]['is_closed'] == 0]
-        for group in groups:
-            topics = get_group_posts(group, 5)
-            if topics is not None:
-                groups_id[group] = topics
-                data_array[user_id] = groups_id
+async def get_group_members(group_id):
+    url = 'https://api.vk.com/method/groups.getMembers'
+    params = {
+        'group_id': group_id,
+        'v': '5.131',
+        'access_token': 'vk1.a.Cyq9AScrJvxUTFoq3CDc7_bqYO9l1N89ZDT7owEwWyvrqTIVtaqxxaMtX-Dt5A0kpkaV-mBH9AzaAxw4YbgBdsPk0qoW4nann1IYiz\
+    IoXelK2F2cjMgadmmxz0iiTcz1oNvNWUpYubIm64vgH-JWdlp-CSiGBeukBg_WQOMUDv9bi6HNj5eZyw_zP5aNwYILpTOdWG47KnbSpMcuqQf1Bg',
+        'fields': 'id'
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, params=params) as resp:
+            data = await resp.json()
+            if 'response' in data:
+                members = data['response']['items']
+                ids = [member['id'] for member in members]
+                return ids
+            else:
+                return []
 
-    return data_array
+
+async def get_all_group_members(group_ids):
+    tasks = [get_group_members(group_id) for group_id in group_ids]
+    results = await asyncio.gather(*tasks)
+    return results
+
+
+async def data():
+    group_ids = [157180382]
+    data_array = {}
+    all_group_members = await get_all_group_members(group_ids)
+    for group_members in all_group_members:
+        for member_id in group_members:
+            url = 'https://api.vk.com/method/users.get'
+            params = {
+                'user_id': member_id,
+                'v': '5.131',
+                'access_token': 'vk1.a.Cyq9AScrJvxUTFoq3CDc7_bqYO9l1N89ZDT7owEwWyvrqTIVtaqxxaMtX-Dt5A0kpkaV-mBH9AzaAxw4YbgBdsPk0qoW4nann1IYiz\
+            IoXelK2F2cjMgadmmxz0iiTcz1oNvNWUpYubIm64vgH-JWdlp-CSiGBeukBg_WQOMUDv9bi6HNj5eZyw_zP5aNwYILpTOdWG47KnbSpMcuqQf1Bg',
+                'fields': 'is_closed'
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params) as resp:
+                    data = await resp.json()
+            if 'response' in data and data['response']:
+                is_closed = data['response'][0]['is_closed']
+                if not is_closed:
+                    url = 'https://api.vk.com/method/groups.get'
+                    params = {
+                        'user_id': member_id,
+                        'v': '5.131',
+                        'access_token': 'vk1.a.Cyq9AScrJvxUTFoq3CDc7_bqYO9l1N89ZDT7owEwWyvrqTIVtaqxxaMtX-Dt5A0kpkaV-mBH9AzaAxw4YbgBdsPk0qoW4nann1IYiz\
+                    IoXelK2F2cjMgadmmxz0iiTcz1oNvNWUpYubIm64vgH-JWdlp-CSiGBeukBg_WQOMUDv9bi6HNj5eZyw_zP5aNwYILpTOdWG47KnbSpMcuqQf1Bg',
+                        'extended': 1,
+                        'filter': 'groups',
+                        'count': 1000
+                    }
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url, params=params) as resp:
+                            data = await resp.json()
+                    if 'response' in data:
+                        groups = data['response']['items']
+                        if 5 <= len(groups) <= 100:
+                            g_ids = [group['id'] for group in groups]
+                            # print(f"Member {member_id} subscribed to groups: {[group['id'] for group in groups]}")
+                            data_array[member_id] = {key: value for key, value in
+                                                     zip(g_ids, [get_group_posts(group['id'], 5) for group in groups if
+                                                                 get_group_posts(group['id'], 1) is not None and (
+                                                                     member_id, group) not in increment_insert()])}
+
+                            # result = {key: value for key, value in zip(dates, post_texts)}
+                            # get_group_posts(group, 5)
+        return data_array
+
+
+def increment_insert():
+    cur.execute("SELECT user_id, vk_group_id FROM user_vk_group")
+    rows = cur.fetchall()
+    return rows
+
+    # получает id групп на которые подписан пользователь
 
 
 def clean_text(text):
@@ -118,7 +194,7 @@ def get_user_posts(id_group):
         result = {key: value for key, value in zip(dates, post_texts)}
         return result
     else:
-        return {'1970-01-01 00:00:00', 'Посты отсутствуют'}
+        return {'1970-01-01 00:00:00':'Записи отсутствуют'}
 
 
 # получение постов со всех групп из xlsx файла и присваивание им тегов.
@@ -157,7 +233,9 @@ def create_train_file():
 
 def main():
     # print(getgroupmembersid())
-    print(get_user_posts(193436147))
+    # print(get_user_posts(193436147))
+    # print(usersubscriptions())
+    print(1)
 
 
 # уже не надо делать функцию по определению тега текста, план изменился
@@ -166,4 +244,6 @@ def main():
 if __name__ == '__main__':
     # for i in getgroupmembersid():
     #     print(get_user_posts(i))
+    # print(asyncio.run(data()))
     main()
+    print(1)
