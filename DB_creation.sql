@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 create database VK;
 create table user_vk_group
 (
