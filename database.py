@@ -1,11 +1,9 @@
-import datetime
-
 import psycopg2
 from main import get_user_posts
 import numpy as np
 from main import data
 import asyncio
-import aiohttp
+
 
 with open('nothing.txt','r') as f:
     vk_api_key=[line.rstrip() for line in f.readlines()]
