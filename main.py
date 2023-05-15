@@ -113,8 +113,6 @@ async def data():
                                                                  get_group_posts(group['id'], 1) is not None and (
                                                                      member_id, group) not in increment_insert()])}
 
-                            # result = {key: value for key, value in zip(dates, post_texts)}
-                            # get_group_posts(group, 5)
         return data_array
 
 
