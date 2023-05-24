@@ -211,6 +211,12 @@ def get_amount_of_posts():
     return posts['count']
 
 
+def get_group_photo():
+    group_info = vk.groups.getById(group_id=getid(group_id), fields='photo_200')
+    avatar_url = group_info[0]['photo_200']
+    return avatar_url
+
+
 def get_top_10_posts():
     try:
         # Обработка полученных данных
