@@ -5,23 +5,28 @@ import joblib
 import psycopg2
 import asyncio
 import aiohttp
+import yaml
 from datetime import datetime
 
-with open('nothing.txt', 'r') as f:
-    vk_api_key = [line.rstrip() for line in f.readlines()]
-session = vk_api.VkApi(token=vk_api_key[0])
+with open('config.yaml', 'r') as file:
+    config: dict = yaml.safe_load(file)
 
 # второй vk api ключ, если первый опять забанят
 # vk1.a.Q4fwlHwY_-8ounQR9EoxyhNlODFYU3lzAFzeuXHLNxctJvWWB5__lXryu0rGA12Kkae1P0eqdr0W_qJ-PBxSCmuzW7sq3GNaNExq0Hj28rkObt9bwhONN4kQHAV9tlIc1uYqJS3i0bb_zeo1vE_-VsVvZM7b_g1VzoVXGAufTdZvgfvl8o_5yr4mppJ99k9hFInFP3g0lY8OpyZ4nhOg5Q
+conn = psycopg2.connect(
+    host=config['database']['host'],
+    port=config['database']['port'],
+    sslmode=config['database']['sslmode'],
+    dbname=config['database']['dbname'],
+    user=config['database']['user'],
+    password=config['database']['password'],
+    target_session_attrs=config['database']['target_session_attrs']
+)
 
 # тут надо написать input(), я заебался каждый раз вставлять ссылку
-group_id = "https://vk.com/baneksbest"
+group_id = "https://vk.com/rut.digital"
+session = vk_api.VkApi(token=config['api-key']['key'])
 vk = session.get_api()
-model = joblib.load('text_model.pkl')
-conn = psycopg2.connect(dbname=vk_api_key[2], user=vk_api_key[3], password=vk_api_key[4], host=vk_api_key[5])
-
-# Создаем курсор для выполнения запросов
-cur = conn.cursor()
 
 
 # получает Id по короткой ссылке вида public123123123
@@ -52,7 +57,7 @@ async def get_group_members(group_id):
     params = {
         'group_id': group_id,
         'v': '5.131',
-        'access_token': vk_api_key[0],
+        'access_token': config['api-key']['key'],
         'fields': 'id'
     }
     async with aiohttp.ClientSession() as session:
@@ -82,7 +87,7 @@ async def data():
             params = {
                 'user_id': member_id,
                 'v': '5.131',
-                'access_token': vk_api_key[0],
+                'access_token': config['api-key']['key'],
                 'fields': 'is_closed'
             }
             async with aiohttp.ClientSession() as session:
@@ -95,7 +100,7 @@ async def data():
                     params = {
                         'user_id': member_id,
                         'v': '5.131',
-                        'access_token': vk_api_key[0],
+                        'access_token': config['api-key']['key'],
                         'extended': 1,
                         'filter': 'groups',
                         'count': 1000
@@ -107,7 +112,6 @@ async def data():
                         groups = data['response']['items']
                         if 5 <= len(groups) <= 100:
                             g_ids = [group['id'] for group in groups]
-                            # print(f"Member {member_id} subscribed to groups: {[group['id'] for group in groups]}")
                             data_array[member_id] = {key: value for key, value in
                                                      zip(g_ids, [get_group_posts(group['id'], 5) for group in groups if
                                                                  get_group_posts(group['id'], 1) is not None and (
@@ -157,15 +161,16 @@ def find_most_frequent_word(words):
 
 # получение постов с группы с условиями
 def get_group_posts(id_group, amount):
-    # Получаем 100 постов с группы(больше 100 не работает, даже после попыток обхода)
     try:
-
-        response = vk.wall.get(owner_id='-' + str(id_group), count=amount, extended=1)
+        response = vk.wall.get(
+            owner_id='-' + str(id_group), count=amount, extended=1)
         posts = response['items']
         if response['count'] != 0:
             # выбор только не рекламных постов
-            post_texts = [post['text'] for post in posts if not post.get('marked_as_ads')]
-            post_texts = [clean_text(post) for post in post_texts if clean_text(post) != '']
+            post_texts = [post['text']
+                          for post in posts if not post.get('marked_as_ads')]
+            post_texts = [clean_text(post)
+                          for post in post_texts if clean_text(post) != '']
             post_texts = [model.predict([text])[0] for text in post_texts]
             post_texts = find_most_frequent_word(post_texts)
             return post_texts
@@ -180,34 +185,19 @@ def get_user_posts(id_group):
     posts = response['items']
     if response['count'] != 0:
         # выбор только не рекламных постов
-        dates = [datetime.fromtimestamp(post['date']).strftime('%Y-%m-%d %H:%M:%S') for post in posts]
-        post_texts = [post['text'] for post in posts if not post.get('marked_as_ads')]
-        post_texts = [clean_text(post) for post in post_texts if clean_text(post) != '']
+        dates = [datetime.fromtimestamp(post['date']).strftime(
+            '%Y-%m-%d %H:%M:%S') for post in posts]
+        post_texts = [post['text']
+                      for post in posts if not post.get('marked_as_ads')]
+        post_texts = [clean_text(post)
+                      for post in post_texts if clean_text(post) != '']
         post_texts = [model.predict([text])[0] for text in post_texts]
-        post_texts = [find_most_frequent_word(post_texts) for i in range(len(post_texts))]
+        post_texts = [find_most_frequent_word(
+            post_texts) for i in range(len(post_texts))]
         result = {key: value for key, value in zip(dates, post_texts)}
         return result
     else:
         return {'1970-01-01 00:00:00': 'Записи отсутствуют'}
-
-
-# получение постов со всех групп из xlsx файла и присваивание им тегов.
-# Сохранение данных в csv файл для обучения модели.
-def save_data():
-    df = pd.read_csv('train_data.csv')
-    data = pd.read_excel('Книга 1.xlsx')
-    # vk_api ругается если слишком часто получать id группы через ссылку
-    # но отдельным генератором urls получить id групп можно(дебилизм)
-    urls = [getid(url) for url in data['ссылка']]
-    idx = 0
-    for url in urls:
-        for i in get_group_posts(url, 100):
-            curr_data = {'text': i, 'tag': data['тематика'][idx]}
-            df.loc[len(df)] = curr_data
-        idx += 1
-    df['text'] = list(map(clean_text, df['text']))
-    df.to_csv('train_data.csv', index=False, lineterminator='', header=True)
-    clean_data_test()
 
 
 # не понятно почему удаление пропусков в датафрейме не работает в функции save_data(), но работает отдельно
@@ -218,26 +208,7 @@ def clean_data_test():
     df.to_csv('train_data.csv', index=False, lineterminator='', header=True)
 
 
-# функция сделана для пробных прогонов создания тренировочного файла с данными, потом ее надо будет удалить
-def create_train_file():
-    df = pd.DataFrame(columns=['text', 'tag'])
-    # Сохранение DataFrame в CSV-файл
-    df.to_csv('train_data.csv', index=False)
-
-
-def main():
-    # print(getgroupmembersid())
-    # print(get_user_posts(193436147))
-    # print(usersubscriptions())
-    print(1)
-
-
-# уже не надо делать функцию по определению тега текста, план изменился
-# потом присвоим тему к group_id в таблице posts_by_group и там будем кластеризовать пользователей
-# про лайки забыли, ничего с ними не получится
 if __name__ == '__main__':
-    # for i in getgroupmembersid():
-    #     print(get_user_posts(i))
-    # print(asyncio.run(data()))
-    main()
-    print(1)
+    model = joblib.load('text_model.pkl')
+    # Создаем курсор для выполнения запросов
+    cur = conn.cursor()
