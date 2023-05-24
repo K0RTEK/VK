@@ -4,7 +4,7 @@ from main import get_user_posts, data, conn
 
 # Создаем курсор для выполнения запросов
 cur = conn.cursor()
-user_vk_group = "INSERT INTO user_vk_group (user_id, vk_group_id) VALUES (%s, %s)"
+user_vk_group = "INSERT INTO user_vk_group (user_id, vk_group_id, vk_group_url) VALUES (%s, %s, %s)"
 vk_group_id_topic = "INSERT INTO vk_group_id_topic (vk_group_id, topic_group) VALUES (%s, %s)"
 user_vk_characteristic = "INSERT INTO user_vk_characteristic (user_id, user_posts_date,topic_user) VALUES (%s, %s, %s)"
 
@@ -24,6 +24,7 @@ def users_subscriptions():
             if values_user in user_vk_group_insert():
                 pass
             else:
+                values_user = (user_id, group_id, f"https://vk.com/public{group_id}")
                 # Выполняем запрос на добавление данных в таблицу
                 cur.execute(user_vk_group, values_user)
                 # Фиксируем изменения в базе данных
