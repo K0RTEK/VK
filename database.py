@@ -1,15 +1,6 @@
-import psycopg2
-from main import get_user_posts
 import numpy as np
-from main import data
 import asyncio
-
-
-with open('nothing.txt','r') as f:
-    vk_api_key=[line.rstrip() for line in f.readlines()]
-
-# Устанавливаем соединение с базой данных
-conn = psycopg2.connect(dbname=vk_api_key[2], user=vk_api_key[3], password=vk_api_key[4], host=vk_api_key[5])
+from main import get_user_posts, data, conn
 
 # Создаем курсор для выполнения запросов
 cur = conn.cursor()
@@ -85,6 +76,5 @@ def user_vk_group_insert():
     rows = cur.fetchall()
     return rows
 
-# user_id_insert()
+
 users_subscriptions()
-# user_vk_group_insert()
