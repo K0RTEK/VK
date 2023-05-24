@@ -200,6 +200,46 @@ def get_user_posts(id_group):
         return {'1970-01-01 00:00:00': 'Записи отсутствуют'}
 
 
+def get_subscribers_info():
+    members = vk.groups.getMembers(group_id=getid(group_id))['items']
+    not_closed = [i for i in vk.users.get(user_ids=members) if i['is_closed'] != False]
+    return len(members), len(not_closed), len(members) - len(not_closed)
+
+
+def get_amount_of_posts():
+    posts = vk.wall.get(owner_id='-' + str(getid(group_id)), extended=1)
+    return posts['count']
+
+
+def get_top_10_posts():
+    try:
+        # Обработка полученных данных
+        posts_likes = {}
+        sliced_posts_likes = {}
+        count_2 = 0
+        offset = 0
+        count = 100
+        while True:
+            posts = vk.wall.get(owner_id='-' + str(getid(group_id)), extended=1, count=count, offset=offset)
+            if not posts['items']:
+                break
+            for post in posts['items']:
+                post_id = f"https://vk.com/wall-{getid(group_id)}_{post['id']}"
+                likes_count = post['likes']['count']
+                posts_likes[post_id] = likes_count
+            offset += count
+        posts_likes_sorted = dict(sorted(posts_likes.items(), key=lambda x: x[1], reverse=True))
+        for k, v in posts_likes_sorted.items():
+            if count_2 < 10:
+                sliced_posts_likes[k] = v
+                count_2 += 1
+        return sliced_posts_likes
+
+    except vk_api.VkApiError as e:
+        print('Произошла ошибка при работе с API:', e)
+        return {}
+
+
 # не понятно почему удаление пропусков в датафрейме не работает в функции save_data(), но работает отдельно
 # в этой функции, поэтому ее не трогать
 def clean_data_test():
