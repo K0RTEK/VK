@@ -2,13 +2,8 @@ import pandas as pd
 from main import clean_data_test, getid, clean_text, vk
 
 
-# print(get_group_posts(getid('https://vk.com/fincultinfo'),100))
-# response = vk.wall.get(owner_id='-' + str(getid('https://vk.com/fincultinfo')), count=100, extended=1)['items']
-# print(response)
-
-
 def save_data():
-    df = pd.read_csv('train_data.csv')
+    df = pd.DataFrame(columns=['text', 'tag'])
     data = pd.read_excel('vk_groups.xlsx')
     # vk_api ругается если слишком часто получать id группы через ссылку
     # но отдельным генератором urls получить id групп можно(дебилизм)
@@ -26,12 +21,6 @@ def save_data():
     df['text'] = list(map(clean_text, df['text']))
     df.to_csv('train_data.csv', index=False, lineterminator='', header=True)
     clean_data_test()
-
-
-def create_train_file():
-    df = pd.DataFrame(columns=['text', 'tag'])
-    # Сохранение DataFrame в CSV-файл
-    df.to_csv('train_data.csv', index=False)
 
 
 def get_train_posts(id_group, amount):
